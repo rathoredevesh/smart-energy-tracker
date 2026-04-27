@@ -1,7 +1,32 @@
+import { Suspense, lazy } from "react";
 import { Cloud, Globe2, Trees } from "lucide-react";
-import EcoScene from "../components/EcoScene";
 import GlassCard from "../components/GlassCard";
 import SectionHeading from "../components/SectionHeading";
+
+const EcoScene = lazy(() => import("../components/EcoScene"));
+
+function EcoSceneFallback({ treeEquivalent, overview }) {
+  return (
+    <GlassCard className="soft-grid p-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-6">
+          <div className="mb-4 inline-flex rounded-2xl bg-emerald-400/10 p-3 text-emerald-300">
+            <Trees size={18} />
+          </div>
+          <p className="text-sm text-slate-400">Tree Equivalent</p>
+          <p className="mt-2 text-3xl font-semibold text-white">{treeEquivalent}</p>
+        </div>
+        <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-6">
+          <div className="mb-4 inline-flex rounded-2xl bg-electric/10 p-3 text-electric">
+            <Globe2 size={18} />
+          </div>
+          <p className="text-sm text-slate-400">Vs City Average</p>
+          <p className="mt-2 text-3xl font-semibold text-white">{overview.vs_city_pct}%</p>
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
 
 export default function EcoImpactSection({ overview, isMobile }) {
   const cityCarbon = Number((overview.city_average_kwh * 0.82).toFixed(2));
@@ -23,30 +48,11 @@ export default function EcoImpactSection({ overview, isMobile }) {
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <div data-reveal>
             {isMobile ? (
-              <GlassCard className="soft-grid p-6">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-6">
-                    <div className="mb-4 inline-flex rounded-2xl bg-emerald-400/10 p-3 text-emerald-300">
-                      <Trees size={18} />
-                    </div>
-                    <p className="text-sm text-slate-400">Tree Equivalent</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">
-                      {treeEquivalent}
-                    </p>
-                  </div>
-                  <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-6">
-                    <div className="mb-4 inline-flex rounded-2xl bg-electric/10 p-3 text-electric">
-                      <Globe2 size={18} />
-                    </div>
-                    <p className="text-sm text-slate-400">Vs City Average</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">
-                      {overview.vs_city_pct}%
-                    </p>
-                  </div>
-                </div>
-              </GlassCard>
+              <EcoSceneFallback treeEquivalent={treeEquivalent} overview={overview} />
             ) : (
-              <EcoScene ecoScore={overview.eco_score} usageRatio={usageRatio} />
+              <Suspense fallback={<EcoSceneFallback treeEquivalent={treeEquivalent} overview={overview} />}>
+                <EcoScene ecoScore={overview.eco_score} usageRatio={usageRatio} />
+              </Suspense>
             )}
           </div>
 

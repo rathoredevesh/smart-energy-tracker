@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import {
   CategoryScale,
   Chart as ChartJS,
@@ -11,10 +11,36 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
-import AnalyticsScene from "../components/AnalyticsScene";
 import GlassCard from "../components/GlassCard";
 import HeatmapCalendar from "../components/HeatmapCalendar";
 import SectionHeading from "../components/SectionHeading";
+
+const AnalyticsScene = lazy(() => import("../components/AnalyticsScene"));
+
+function AnalyticsSceneFallback({ analytics, period }) {
+  const topUsage = analytics.bar_chart[0]?.[period] ?? 1;
+
+  return (
+    <div className="space-y-3">
+      {analytics.bar_chart.map((item) => (
+        <div key={item.appliance} className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-medium text-white">{item.appliance}</p>
+            <p className="text-sm text-slate-300">{item[period]} kWh</p>
+          </div>
+          <div className="budget-track mt-3 h-2 rounded-full">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-tealglow to-electric"
+              style={{
+                width: `${Math.min((item[period] / topUsage) * 100, 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -109,26 +135,11 @@ export default function AnalyticsSection({ analytics, isMobile }) {
               </div>
 
               {isMobile ? (
-                <div className="space-y-3">
-                  {analytics.bar_chart.map((item) => (
-                    <div key={item.appliance} className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-white">{item.appliance}</p>
-                        <p className="text-sm text-slate-300">{item[period]} kWh</p>
-                      </div>
-                      <div className="budget-track mt-3 h-2 rounded-full">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-tealglow to-electric"
-                          style={{
-                            width: `${Math.min((item[period] / analytics.bar_chart[0][period]) * 100, 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <AnalyticsSceneFallback analytics={analytics} period={period} />
               ) : (
-                <AnalyticsScene dataset={analytics.bar_chart} period={period} />
+                <Suspense fallback={<AnalyticsSceneFallback analytics={analytics} period={period} />}>
+                  <AnalyticsScene dataset={analytics.bar_chart} period={period} />
+                </Suspense>
               )}
             </GlassCard>
 

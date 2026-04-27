@@ -9,8 +9,10 @@ import {
   VolumeX,
   Zap,
 } from "lucide-react";
+import { Suspense, lazy } from "react";
 import GlassCard from "../components/GlassCard";
-import HeroScene from "../components/HeroScene";
+
+const HeroScene = lazy(() => import("../components/HeroScene"));
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-IN", {
@@ -18,6 +20,29 @@ function formatCurrency(value) {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function HeroSceneFallback({ dayMode }) {
+  return (
+    <GlassCard className="hero-backdrop overflow-hidden p-8">
+      <div className="soft-grid rounded-[28px] border border-white/8 p-8">
+        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full border border-tealglow/30 bg-tealglow/10 shadow-[0_0_50px_rgba(0,245,197,0.22)]">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-electric/15 px-3 text-center text-sm font-semibold text-white">
+            {dayMode ? "Day Mode" : "Night Mode"}
+          </div>
+        </div>
+        <div className="mt-8 grid grid-cols-5 gap-3">
+          {Array.from({ length: 10 }).map((_, index) => (
+            <div
+              key={index}
+              className="rounded-2xl bg-white/5"
+              style={{ height: `${48 + (index % 5) * 18}px` }}
+            />
+          ))}
+        </div>
+      </div>
+    </GlassCard>
+  );
 }
 
 export default function HeroSection({
@@ -149,26 +174,11 @@ export default function HeroSection({
 
         <div className="space-y-4" data-reveal>
           {isMobile ? (
-            <GlassCard className="hero-backdrop overflow-hidden p-8">
-              <div className="soft-grid rounded-[28px] border border-white/8 p-8">
-                <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full border border-tealglow/30 bg-tealglow/10 shadow-[0_0_50px_rgba(0,245,197,0.22)]">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-electric/15 px-3 text-center text-sm font-semibold text-white">
-                    {dayMode ? "Day Mode" : "Night Mode"}
-                  </div>
-                </div>
-                <div className="mt-8 grid grid-cols-5 gap-3">
-                  {Array.from({ length: 10 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className="rounded-2xl bg-white/5"
-                      style={{ height: `${48 + (index % 5) * 18}px` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </GlassCard>
+            <HeroSceneFallback dayMode={dayMode} />
           ) : (
-            <HeroScene dayMode={dayMode} />
+            <Suspense fallback={<HeroSceneFallback dayMode={dayMode} />}>
+              <HeroScene dayMode={dayMode} />
+            </Suspense>
           )}
 
           <GlassCard className="grid gap-4 p-5 sm:grid-cols-[1fr_1fr_1fr_auto]">

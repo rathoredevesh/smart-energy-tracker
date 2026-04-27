@@ -1,17 +1,9 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, startTransition, useEffect, useMemo, useState } from "react";
 import { Bolt, Leaf, Menu, Volume2, VolumeX, X } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import HeroSection from "./sections/HeroSection";
 import PulseSection from "./sections/PulseSection";
-import HouseSection from "./sections/HouseSection";
-import DataPanelSection from "./sections/DataPanelSection";
-import OptimizationSection from "./sections/OptimizationSection";
-import AnalyticsSection from "./sections/AnalyticsSection";
-import InsightsSection from "./sections/InsightsSection";
-import ReportCardSection from "./sections/ReportCardSection";
-import EcoImpactSection from "./sections/EcoImpactSection";
-import LeaderboardSection from "./sections/LeaderboardSection";
 import {
   createEnergyLog,
   fetchDashboard,
@@ -25,9 +17,19 @@ import CustomCursor from "./components/CustomCursor";
 import FloatingAssistant from "./components/FloatingAssistant";
 import OnboardingModal from "./components/OnboardingModal";
 
+const HouseSection = lazy(() => import("./sections/HouseSection"));
+const DataPanelSection = lazy(() => import("./sections/DataPanelSection"));
+const OptimizationSection = lazy(() => import("./sections/OptimizationSection"));
+const AnalyticsSection = lazy(() => import("./sections/AnalyticsSection"));
+const InsightsSection = lazy(() => import("./sections/InsightsSection"));
+const ReportCardSection = lazy(() => import("./sections/ReportCardSection"));
+const EcoImpactSection = lazy(() => import("./sections/EcoImpactSection"));
+const LeaderboardSection = lazy(() => import("./sections/LeaderboardSection"));
+
 gsap.registerPlugin(ScrollTrigger);
 
 const STORAGE_KEY = "smart-energy-profile";
+const DASHBOARD_CACHE_KEY = "smart-energy-dashboard-cache";
 const THEME_KEY = "smart-energy-theme";
 const VIEW_KEY = "smart-energy-view";
 const DAY_MODE_LABEL = "\u2600\uFE0F Day Mode";
@@ -167,6 +169,33 @@ function saveStoredView(viewId) {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(VIEW_KEY, viewId);
   }
+}
+
+function readDashboardCache() {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(DASHBOARD_CACHE_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function readCachedDashboard(householdName) {
+  const cache = readDashboardCache();
+  return cache[householdName] ?? null;
+}
+
+function saveCachedDashboard(householdName, dashboard) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const cache = readDashboardCache();
+  cache[householdName] = dashboard;
+  window.localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cache));
 }
 
 function aggregateAppliances(rooms = []) {
@@ -566,9 +595,36 @@ function LoadingScreen() {
   );
 }
 
+function SectionFallback({ title = "Loading section..." }) {
+  return (
+    <section className="section-shell pb-10 pt-10">
+      <div className="page-shell">
+        <div className="glass-panel rounded-[32px] p-8">
+          <p className="text-sm uppercase tracking-[0.28em] text-slate-500">Preparing view</p>
+          <h2 className="mt-4 font-display text-3xl font-bold text-white">{title}</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">
+            Pulling the interactive visuals into place.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function createFallbackDashboard(householdName) {
+  return normalizeDashboard({}, householdName ?? DEFAULT_PROFILE.householdName);
+}
+
 export default function App() {
-  const [dashboard, setDashboard] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState(() => readStoredProfile());
+  const [dashboard, setDashboard] = useState(() => {
+    const storedProfile = readStoredProfile();
+    return (
+      readCachedDashboard(storedProfile.householdName) ??
+      createFallbackDashboard(storedProfile.householdName)
+    );
+  });
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState("");
@@ -577,7 +633,6 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [theme, setTheme] = useState(() => readStoredTheme());
   const [activeView, setActiveView] = useState(() => readStoredView());
-  const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [alertQueue, setAlertQueue] = useState([]);
   const isMobile = useResponsiveMode();
@@ -659,23 +714,37 @@ export default function App() {
     ];
   }, [activeHousehold, activeView, dashboard]);
 
-  async function loadDashboard(householdName) {
+  function primeDashboard(householdName) {
+    const nextHousehold = householdName ?? DEFAULT_PROFILE.householdName;
+    const cachedDashboard = readCachedDashboard(nextHousehold);
+    startTransition(() => {
+      setDashboard(cachedDashboard ?? createFallbackDashboard(nextHousehold));
+    });
+  }
+
+  async function loadDashboard(householdName, options = {}) {
+    const { background = false } = options;
+    const nextHousehold =
+      householdName ?? profile.householdName ?? DEFAULT_PROFILE.householdName;
+
     try {
-      setLoading(true);
-      const payload = await fetchDashboard(householdName);
+      if (!background) {
+        setLoading(true);
+      }
+
+      const payload = await fetchDashboard(nextHousehold);
+      const normalizedDashboard = normalizeDashboard(payload, nextHousehold);
       startTransition(() => {
-        setDashboard(
-          normalizeDashboard(
-            payload,
-            householdName ?? profile.householdName ?? DEFAULT_PROFILE.householdName,
-          ),
-        );
+        setDashboard(normalizedDashboard);
       });
+      saveCachedDashboard(nextHousehold, normalizedDashboard);
       setError("");
     } catch (loadError) {
       setError(loadError.message);
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   }
 
@@ -683,7 +752,7 @@ export default function App() {
     const storedProfile = readStoredProfile();
     setProfile(storedProfile);
     setShowOnboarding(!window.localStorage.getItem(STORAGE_KEY));
-    loadDashboard(storedProfile.householdName);
+    loadDashboard(storedProfile.householdName, { background: true });
   }, []);
 
   useEffect(() => {
@@ -754,9 +823,11 @@ export default function App() {
         ...payload,
         household_name: activeHousehold,
       });
+      const normalizedDashboard = normalizeDashboard(response.dashboard, activeHousehold);
       startTransition(() => {
-        setDashboard(normalizeDashboard(response.dashboard, activeHousehold));
+        setDashboard(normalizedDashboard);
       });
+      saveCachedDashboard(activeHousehold, normalizedDashboard);
       setFeedback({ type: "success", message: response.message });
       setError("");
     } catch (submitError) {
@@ -771,9 +842,14 @@ export default function App() {
       setBusy(true);
       const response = await uploadBillWorkbook(file);
       const refreshedDashboard = await fetchDashboard(activeHousehold);
+      const normalizedDashboard = normalizeDashboard(
+        refreshedDashboard ?? response.dashboard,
+        activeHousehold,
+      );
       startTransition(() => {
-        setDashboard(normalizeDashboard(refreshedDashboard ?? response.dashboard, activeHousehold));
+        setDashboard(normalizedDashboard);
       });
+      saveCachedDashboard(activeHousehold, normalizedDashboard);
       setFeedback({ type: "success", message: response.message });
       setError("");
     } catch (uploadError) {
@@ -787,14 +863,16 @@ export default function App() {
     const nextProfile = { ...profile, householdName: nextHousehold };
     setProfile(nextProfile);
     saveStoredProfile(nextProfile);
-    await loadDashboard(nextHousehold);
+    primeDashboard(nextHousehold);
+    await loadDashboard(nextHousehold, { background: true });
   }
 
   function handleSaveProfile(nextProfile) {
     setProfile(nextProfile);
     saveStoredProfile(nextProfile);
     setShowOnboarding(false);
-    loadDashboard(nextProfile.householdName);
+    primeDashboard(nextProfile.householdName);
+    loadDashboard(nextProfile.householdName, { background: true });
   }
 
   function navigateToView(viewId) {
@@ -841,12 +919,14 @@ export default function App() {
             description={currentViewMeta.description}
             metrics={currentViewMetrics}
           />
-          <HouseSection
-            rooms={dashboard.rooms}
-            isMobile={isMobile}
-            wireframeMode={wireframeMode}
-            onToggleWireframe={() => setWireframeMode((current) => !current)}
-          />
+          <Suspense fallback={<SectionFallback title="Loading the 3D house..." />}>
+            <HouseSection
+              rooms={dashboard.rooms}
+              isMobile={isMobile}
+              wireframeMode={wireframeMode}
+              onToggleWireframe={() => setWireframeMode((current) => !current)}
+            />
+          </Suspense>
         </>
       );
     }
@@ -860,22 +940,24 @@ export default function App() {
             description={currentViewMeta.description}
             metrics={currentViewMetrics}
           />
-          <DataPanelSection
-            rooms={dashboard.rooms}
-            recentLogs={dashboard.recent_logs}
-            onSubmitLog={handleSubmitLog}
-            onUploadBill={handleUploadBill}
-            exportUrl={getReportExportUrl(activeHousehold)}
-            busy={busy}
-            feedback={feedback}
-            activeHousehold={activeHousehold}
-            availableHouseholds={dashboard.profile.available_households}
-            onHouseholdChange={handleHouseholdChange}
-          />
-          <ReportCardSection
-            billBreakdown={dashboard.bill_breakdown}
-            ecoReport={dashboard.eco_report}
-          />
+          <Suspense fallback={<SectionFallback title="Loading usage center..." />}>
+            <DataPanelSection
+              rooms={dashboard.rooms}
+              recentLogs={dashboard.recent_logs}
+              onSubmitLog={handleSubmitLog}
+              onUploadBill={handleUploadBill}
+              exportUrl={getReportExportUrl(activeHousehold)}
+              busy={busy}
+              feedback={feedback}
+              activeHousehold={activeHousehold}
+              availableHouseholds={dashboard.profile.available_households}
+              onHouseholdChange={handleHouseholdChange}
+            />
+            <ReportCardSection
+              billBreakdown={dashboard.bill_breakdown}
+              ecoReport={dashboard.eco_report}
+            />
+          </Suspense>
         </>
       );
     }
@@ -889,12 +971,14 @@ export default function App() {
             description={currentViewMeta.description}
             metrics={currentViewMetrics}
           />
-          <OptimizationSection
-            billBreakdown={dashboard.bill_breakdown}
-            planner={dashboard.planner}
-            insights={dashboard.insights}
-            overview={dashboard.overview}
-          />
+          <Suspense fallback={<SectionFallback title="Loading savings lab..." />}>
+            <OptimizationSection
+              billBreakdown={dashboard.bill_breakdown}
+              planner={dashboard.planner}
+              insights={dashboard.insights}
+              overview={dashboard.overview}
+            />
+          </Suspense>
         </>
       );
     }
@@ -908,8 +992,10 @@ export default function App() {
             description={currentViewMeta.description}
             metrics={currentViewMetrics}
           />
-          <AnalyticsSection analytics={dashboard.analytics} isMobile={isMobile} />
-          <InsightsSection insights={dashboard.insights} />
+          <Suspense fallback={<SectionFallback title="Loading analytics..." />}>
+            <AnalyticsSection analytics={dashboard.analytics} isMobile={isMobile} />
+            <InsightsSection insights={dashboard.insights} />
+          </Suspense>
         </>
       );
     }
@@ -923,8 +1009,10 @@ export default function App() {
             description={currentViewMeta.description}
             metrics={currentViewMetrics}
           />
-          <EcoImpactSection overview={dashboard.overview} isMobile={isMobile} />
-          <LeaderboardSection leaderboard={dashboard.leaderboard} />
+          <Suspense fallback={<SectionFallback title="Loading eco impact..." />}>
+            <EcoImpactSection overview={dashboard.overview} isMobile={isMobile} />
+            <LeaderboardSection leaderboard={dashboard.leaderboard} />
+          </Suspense>
         </>
       );
     }

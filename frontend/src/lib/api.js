@@ -1,4 +1,30 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const DEFAULT_TIMEOUT_MS = 15000;
+const DASHBOARD_TIMEOUT_MS = 9000;
+
+async function request(path, options = {}, config = {}) {
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    timeoutMessage = "The API took too long to respond.",
+  } = config;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+    });
+    return handleResponse(response);
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 async function handleResponse(response) {
   if (!response.ok) {
@@ -21,30 +47,34 @@ export async function fetchDashboard(householdName) {
     search.set("household_name", householdName);
   }
   const query = search.toString();
-  const response = await fetch(`${API_BASE}/api/dashboard${query ? `?${query}` : ""}`);
-  return handleResponse(response);
+  return request(`/api/dashboard${query ? `?${query}` : ""}`, {}, {
+    timeoutMs: DASHBOARD_TIMEOUT_MS,
+    timeoutMessage:
+      "Live data is taking longer than expected. Showing cached values while the backend wakes up.",
+  });
 }
 
 export async function createEnergyLog(payload) {
-  const response = await fetch(`${API_BASE}/api/logs`, {
+  return request("/api/logs", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
   });
-  return handleResponse(response);
 }
 
 export async function uploadBillWorkbook(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE}/api/bills/upload`, {
+  return request("/api/bills/upload", {
     method: "POST",
     body: formData,
+  }, {
+    timeoutMs: 30000,
+    timeoutMessage: "The bill upload is taking too long. Please try again.",
   });
-  return handleResponse(response);
 }
 
 export function getReportExportUrl(householdName) {
