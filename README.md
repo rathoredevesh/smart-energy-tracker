@@ -33,6 +33,12 @@ To override it:
 set VITE_API_BASE_URL=http://localhost:8000
 ```
 
+For a production frontend build behind a subpath such as GitHub Pages, you can also set:
+
+```bash
+set VITE_BASE_PATH=/smart-energy-tracker/
+```
+
 ## Backend Setup
 
 ```bash
@@ -70,3 +76,30 @@ Alternative headings such as `device`, `power`, `usage date`, and `hours` are al
 - Eco impact visual with CO2 conversion, adaptive tree, and city comparison
 - Eco leaderboard with milestone badges
 - Responsive mobile fallback with simplified 2D panels
+
+## Deployment
+
+### GitHub Pages frontend
+
+The repository includes a GitHub Actions workflow at `.github/workflows/deploy-pages.yml` that publishes the React frontend to GitHub Pages on every push to `main`.
+
+Expected Pages URL:
+
+```text
+https://rathoredevesh.github.io/smart-energy-tracker/
+```
+
+Before the first Pages deployment:
+
+1. Open the repository on GitHub.
+2. Go to `Settings -> Pages`.
+3. Under `Build and deployment`, choose `GitHub Actions`.
+
+The Pages workflow builds the frontend with:
+
+- `VITE_BASE_PATH=/smart-energy-tracker/`
+- `VITE_API_BASE_URL=https://smart-energy-api-h9cr.onrender.com`
+
+### Backend hosting
+
+The FastAPI backend still needs a server platform such as Render. GitHub Pages only hosts the frontend bundle.
