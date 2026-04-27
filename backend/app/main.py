@@ -17,15 +17,22 @@ from .services import (
     insert_log_entry,
 )
 
+LOCAL_FRONTEND_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+DEFAULT_GITHUB_PAGES_ORIGIN_REGEX = r"^https://[a-z0-9-]+\.github\.io$"
+
 
 def get_allowed_origins() -> list[str]:
-    defaults = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ]
     raw = os.getenv("FRONTEND_ORIGINS", "")
     configured = [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return list(dict.fromkeys([*defaults, *configured]))
+    return list(dict.fromkeys([*LOCAL_FRONTEND_ORIGINS, *configured]))
+
+
+def get_allowed_origin_regex() -> str | None:
+    raw = os.getenv("FRONTEND_ORIGIN_REGEX", DEFAULT_GITHUB_PAGES_ORIGIN_REGEX).strip()
+    return raw or None
 
 
 @asynccontextmanager
@@ -43,6 +50,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
+    allow_origin_regex=get_allowed_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

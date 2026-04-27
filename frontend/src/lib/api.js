@@ -1,6 +1,55 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const LOCAL_API_BASE = "http://localhost:8000";
+const GITHUB_PAGES_API_BASE = "https://smart-energy-api-h9cr.onrender.com";
+const API_BASE = resolveApiBase();
 const DEFAULT_TIMEOUT_MS = 15000;
 const DASHBOARD_TIMEOUT_MS = 9000;
+
+function trimTrailingSlash(value) {
+  return String(value ?? "").replace(/\/+$/, "");
+}
+
+function isLocalHostname(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+function resolveApiBase() {
+  const configuredBase = trimTrailingSlash(import.meta.env.VITE_API_BASE_URL);
+  if (configuredBase) {
+    return configuredBase;
+  }
+
+  if (typeof window === "undefined") {
+    return LOCAL_API_BASE;
+  }
+
+  if (isLocalHostname(window.location.hostname)) {
+    return LOCAL_API_BASE;
+  }
+
+  if (window.location.hostname.endsWith(".github.io")) {
+    return GITHUB_PAGES_API_BASE;
+  }
+
+  return LOCAL_API_BASE;
+}
+
+function toRequestError(error, timeoutMessage) {
+  if (error?.name === "AbortError") {
+    return new Error(timeoutMessage);
+  }
+
+  if (error instanceof TypeError && error.message === "Failed to fetch") {
+    return new Error(
+      "The live energy API could not be reached. If you are on the GitHub Pages deployment, the backend may still be waking up or blocking this origin. Please retry in a few seconds.",
+    );
+  }
+
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error("Something went wrong while contacting the API.");
+}
 
 async function request(path, options = {}, config = {}) {
   const {
@@ -17,10 +66,7 @@ async function request(path, options = {}, config = {}) {
     });
     return handleResponse(response);
   } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error(timeoutMessage);
-    }
-    throw error;
+    throw toRequestError(error, timeoutMessage);
   } finally {
     clearTimeout(timeoutId);
   }
